@@ -11,106 +11,113 @@ import os
 import tempfile
 
 def initialize_session_state():
+    # Ensure session state contains required variables
     if 'history' not in st.session_state:
         st.session_state['history'] = []
 
     if 'generated' not in st.session_state:
-        st.session_state['generated'] = ["Hello! Ask me anything about your document."]
+        st.session_state['generated'] = ["Hello! Ask me anything about"]
 
     if 'past' not in st.session_state:
         st.session_state['past'] = ["Hey!"]
 
-def conversation_chat(query, chain, history):
+def handle_conversation(query, chain, history):
+    # Generate a response from the chain and update history
     result = chain({"question": query, "chat_history": history})
     history.append((query, result["answer"]))
     return result["answer"]
 
-def display_chat_history(chain):
+def display_chat_interface(chain):
+    # Containers for chat history and user input
     reply_container = st.container()
-    container = st.container()
+    user_input_container = st.container()
 
-    with container:
-        with st.form(key='my_form', clear_on_submit=True):
+    with user_input_container:
+        with st.form(key='user_form', clear_on_submit=True):
             user_input = st.text_input("Question:", placeholder="Ask about your PDF", key='input')
             submit_button = st.form_submit_button(label='Send')
 
         if submit_button and user_input:
             with st.spinner('Generating response...'):
-                output = conversation_chat(user_input, chain, st.session_state['history'])
+                response = handle_conversation(user_input, chain, st.session_state['history'])
 
             st.session_state['past'].append(user_input)
-            st.session_state['generated'].append(output)
+            st.session_state['generated'].append(response)
 
     if st.session_state['generated']:
+        # Display the conversation history
         with reply_container:
             for i in range(len(st.session_state['generated'])):
-                message(st.session_state["past"][i], is_user=True, key=str(i) + '_user', avatar_style="thumbs")
+                message(st.session_state["past"][i], is_user=True, key=f"{i}_user", avatar_style="thumbs")
                 message(st.session_state["generated"][i], key=str(i), avatar_style="fun-emoji")
 
-def create_conversational_chain(vector_store):
-    model_path = "/content/drive/MyDrive/path/to/mistral-7b-instruct-v0.1.Q4_K_M.gguf"  # Update the model path
-
+def setup_conversational_chain(vector_store):
+    # Configure the language model
     llm = LlamaCpp(
         streaming=True,
-        model_path=model_path,
+        model_path="mistral-7b-instruct-v0.1.Q4_K_M.gguf",
         temperature=0.75,
         top_p=1,
         verbose=True,
         n_ctx=4096
     )
-    
+
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm, 
+    # Create a conversational chain with the retriever and memory
+    return ConversationalRetrievalChain.from_llm(
+        llm=llm,
         chain_type='stuff',
         retriever=vector_store.as_retriever(search_kwargs={"k": 2}),
         memory=memory
     )
-    return chain
 
 def main():
-    # Initialize session state
+    # Set up session state variables
     initialize_session_state()
-    st.title("Content Engine - by Rahul")
-    
-    # Initialize Streamlit
+
+    st.title("Content Engine - Rahul Kumar")
     st.sidebar.title("Document Processing")
+
+    # Upload and process documents
     uploaded_files = st.sidebar.file_uploader("Upload files", accept_multiple_files=True)
 
     if uploaded_files:
-        text = []
+        all_texts = []
         for file in uploaded_files:
             file_extension = os.path.splitext(file.name)[1]
+
+            # Temporarily save uploaded file
             with tempfile.NamedTemporaryFile(delete=False) as temp_file:
                 temp_file.write(file.read())
-                temp_file_path = temp_file.name
+                temp_path = temp_file.name
 
             loader = None
             if file_extension == ".pdf":
-                loader = PyPDFLoader(temp_file_path)
+                loader = PyPDFLoader(temp_path)
 
             if loader:
-                text.extend(loader.load())
-                os.remove(temp_file_path)
+                all_texts.extend(loader.load())
+                os.remove(temp_path)
 
+        # Split text into manageable chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=20)
-        text_chunks = text_splitter.split_documents(text)
+        text_chunks = text_splitter.split_documents(all_texts)
 
-        # Create embeddings
+        # Generate embeddings using a pre-trained model
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2", 
             model_kwargs={'device': 'cpu'}
         )
 
-        # Create vector store
+        # Build a vector store for text retrieval
         vector_store = FAISS.from_documents(text_chunks, embedding=embeddings)
 
-        # Create the chain object
-        chain = create_conversational_chain(vector_store)
+        # Set up the conversational chain
+        chain = setup_conversational_chain(vector_store)
 
-        # Display chat history and start the conversation
-        display_chat_history(chain)
+        # Display the chat interface
+        display_chat_interface(chain)
 
 if __name__ == "__main__":
     main()
