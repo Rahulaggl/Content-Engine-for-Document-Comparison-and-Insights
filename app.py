@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st
 from streamlit_chat import message
 from langchain.chains import ConversationalRetrievalChain
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -9,29 +9,22 @@ from langchain.memory import ConversationBufferMemory
 from langchain.document_loaders import PyPDFLoader
 import os
 import tempfile
-from google.colab import drive
 
-# Mount Google Drive
-drive.mount('/content/drive')
-
-# Initialize session state
 def initialize_session_state():
     if 'history' not in st.session_state:
         st.session_state['history'] = []
 
     if 'generated' not in st.session_state:
-        st.session_state['generated'] = ["Hello! Ask me anything about"]
+        st.session_state['generated'] = ["Hello! Ask me anything about your document."]
 
     if 'past' not in st.session_state:
         st.session_state['past'] = ["Hey!"]
 
-# Function for chat conversation
 def conversation_chat(query, chain, history):
     result = chain({"question": query, "chat_history": history})
     history.append((query, result["answer"]))
     return result["answer"]
 
-# Display chat history
 def display_chat_history(chain):
     reply_container = st.container()
     container = st.container()
@@ -54,9 +47,8 @@ def display_chat_history(chain):
                 message(st.session_state["past"][i], is_user=True, key=str(i) + '_user', avatar_style="thumbs")
                 message(st.session_state["generated"][i], key=str(i), avatar_style="fun-emoji")
 
-# Function to create conversational chain
 def create_conversational_chain(vector_store):
-    model_path = '/content/drive/MyDrive/path/to/mistral-7b-instruct-v0.1.Q4_K_M.gguf'  # Update this path to your model's location
+    model_path = "/content/drive/MyDrive/path/to/mistral-7b-instruct-v0.1.Q4_K_M.gguf"  # Update the model path
 
     llm = LlamaCpp(
         streaming=True,
@@ -69,9 +61,12 @@ def create_conversational_chain(vector_store):
     
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-    chain = ConversationalRetrievalChain.from_llm(llm=llm, chain_type='stuff',
-                                                 retriever=vector_store.as_retriever(search_kwargs={"k": 2}),
-                                                 memory=memory)
+    chain = ConversationalRetrievalChain.from_llm(
+        llm=llm, 
+        chain_type='stuff',
+        retriever=vector_store.as_retriever(search_kwargs={"k": 2}),
+        memory=memory
+    )
     return chain
 
 def main():
@@ -99,13 +94,14 @@ def main():
                 text.extend(loader.load())
                 os.remove(temp_file_path)
 
-        # Split text into chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=20)
         text_chunks = text_splitter.split_documents(text)
 
         # Create embeddings
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", 
-                                           model_kwargs={'device': 'cpu'})
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2", 
+            model_kwargs={'device': 'cpu'}
+        )
 
         # Create vector store
         vector_store = FAISS.from_documents(text_chunks, embedding=embeddings)
@@ -113,6 +109,7 @@ def main():
         # Create the chain object
         chain = create_conversational_chain(vector_store)
 
+        # Display chat history and start the conversation
         display_chat_history(chain)
 
 if __name__ == "__main__":
