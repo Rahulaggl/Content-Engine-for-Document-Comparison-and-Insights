@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st 
 from streamlit_chat import message
 from langchain.chains import ConversationalRetrievalChain
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -9,10 +9,12 @@ from langchain.memory import ConversationBufferMemory
 from langchain.document_loaders import PyPDFLoader
 import os
 import tempfile
+from google.colab import drive
 
+# Mount Google Drive
+drive.mount('/content/drive')
 
-
-
+# Initialize session state
 def initialize_session_state():
     if 'history' not in st.session_state:
         st.session_state['history'] = []
@@ -23,11 +25,13 @@ def initialize_session_state():
     if 'past' not in st.session_state:
         st.session_state['past'] = ["Hey!"]
 
+# Function for chat conversation
 def conversation_chat(query, chain, history):
     result = chain({"question": query, "chat_history": history})
     history.append((query, result["answer"]))
     return result["answer"]
 
+# Display chat history
 def display_chat_history(chain):
     reply_container = st.container()
     container = st.container()
@@ -50,16 +54,18 @@ def display_chat_history(chain):
                 message(st.session_state["past"][i], is_user=True, key=str(i) + '_user', avatar_style="thumbs")
                 message(st.session_state["generated"][i], key=str(i), avatar_style="fun-emoji")
 
+# Function to create conversational chain
 def create_conversational_chain(vector_store):
-    # Create llm
+    model_path = '/content/drive/MyDrive/path/to/mistral-7b-instruct-v0.1.Q4_K_M.gguf'  # Update this path to your model's location
+
     llm = LlamaCpp(
-    streaming = True,
-    model_path="mistral-7b-instruct-v0.1.Q4_K_M.gguf",
-    temperature=0.75,
-    top_p=1, 
-    verbose=True,
-    n_ctx=4096
-)
+        streaming=True,
+        model_path=model_path,
+        temperature=0.75,
+        top_p=1,
+        verbose=True,
+        n_ctx=4096
+    )
     
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
@@ -72,10 +78,10 @@ def main():
     # Initialize session state
     initialize_session_state()
     st.title("Content Engine - by Rahul")
+    
     # Initialize Streamlit
     st.sidebar.title("Document Processing")
     uploaded_files = st.sidebar.file_uploader("Upload files", accept_multiple_files=True)
-
 
     if uploaded_files:
         text = []
@@ -93,6 +99,7 @@ def main():
                 text.extend(loader.load())
                 os.remove(temp_file_path)
 
+        # Split text into chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=20)
         text_chunks = text_splitter.split_documents(text)
 
@@ -106,7 +113,6 @@ def main():
         # Create the chain object
         chain = create_conversational_chain(vector_store)
 
-        
         display_chat_history(chain)
 
 if __name__ == "__main__":
